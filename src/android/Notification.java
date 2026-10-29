@@ -18,16 +18,28 @@
 */
 package org.apache.cordova.dialogs;
 
-import android.annotation.SuppressLint;
-import android.app.AlertDialog;
-import android.app.AlertDialog.Builder;
-import android.app.ProgressDialog;
-import android.content.res.Resources;
+import android.content.Context;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
-import android.widget.EditText;
+import android.text.InputType;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AlertDialog;
+import androidx.core.widget.TextViewCompat;
+
+import com.google.android.material.color.MaterialColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.progressindicator.CircularProgressIndicator;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
@@ -37,11 +49,15 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
 import java.util.ArrayList;
 
 
 /**
  * This class provides access to notifications on the device.
+ * <p>
+ * Material Design 3 version: every dialog is built with MaterialAlertDialogBuilder,
+ * so it follows the activity theme (DayNight, colorPrimary, shapes, typography).
  * <p>
  * Be aware that this implementation gets called on
  * navigator.notification.{alert|confirm|prompt}, and that there is a separate
@@ -70,8 +86,9 @@ public class Notification extends CordovaPlugin {
     private ArrayList<AlertDialog> dialogs = new ArrayList<>();
 
     public int confirmResult = -1;
-    public ProgressDialog spinnerDialog = null;
-    public ProgressDialog progressDialog = null;
+    public AlertDialog spinnerDialog = null;
+    public AlertDialog progressDialog = null;
+    private LinearProgressIndicator progressIndicator = null;
 
     /**
      * Constructor.
@@ -182,8 +199,7 @@ public class Notification extends CordovaPlugin {
         final CordovaInterface cordova = this.cordova;
 
         Runnable runnable = () -> {
-
-            Builder dlg = createDialog(cordova); // new AlertDialog.Builder(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
+            MaterialAlertDialogBuilder dlg = createDialog(cordova);
             dlg.setMessage(message);
             dlg.setTitle(title);
             dlg.setCancelable(true);
@@ -216,7 +232,7 @@ public class Notification extends CordovaPlugin {
         final CordovaInterface cordova = this.cordova;
 
         Runnable runnable = () -> {
-            Builder dlg = createDialog(cordova); // new AlertDialog.Builder(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
+            MaterialAlertDialogBuilder dlg = createDialog(cordova);
             dlg.setMessage(message);
             dlg.setTitle(title);
             dlg.setCancelable(true);
@@ -230,7 +246,7 @@ public class Notification extends CordovaPlugin {
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, 1));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on first button.");
+                    LOG.d(LOG_TAG, "JSONException on first button.");
                 }
             }
 
@@ -243,7 +259,7 @@ public class Notification extends CordovaPlugin {
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, 2));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on second button.");
+                    LOG.d(LOG_TAG, "JSONException on second button.");
                 }
             }
 
@@ -256,7 +272,7 @@ public class Notification extends CordovaPlugin {
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, 3));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on third button.");
+                    LOG.d(LOG_TAG, "JSONException on third button.");
                 }
             }
             dlg.setOnCancelListener(dialog -> {
@@ -286,21 +302,32 @@ public class Notification extends CordovaPlugin {
         final CordovaInterface cordova = this.cordova;
 
         Runnable runnable = () -> {
-            final EditText promptInput =  new EditText(cordova.getActivity());
+            Context ctx = cordova.getActivity();
 
-            /* CB-11677 - By default, prompt input text color is set according current theme.
-            But for some android versions is not visible (for example 5.1.1).
-            android.R.color.primary_text_light will make text visible on all versions. */
-            Resources resources = cordova.getActivity().getResources();
-            int promptInputTextColor = resources.getColor(android.R.color.primary_text_light);
-            promptInput.setTextColor(promptInputTextColor);
+            // Material outlined text field. Text and outline colors come from the theme,
+            // so the input stays readable in both light and dark mode
+            // (replaces the old CB-11677 workaround that forced dark text).
+            TextInputLayout inputLayout = new TextInputLayout(ctx, null,
+                    com.google.android.material.R.attr.textInputOutlinedStyle);
+            final TextInputEditText promptInput = new TextInputEditText(inputLayout.getContext());
+            promptInput.setInputType(InputType.TYPE_CLASS_TEXT);
+            promptInput.setSingleLine(true);
             promptInput.setText(defaultText);
-            Builder dlg = createDialog(cordova); // new AlertDialog.Builder(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
+            if (defaultText != null) promptInput.setSelection(defaultText.length());
+            inputLayout.addView(promptInput, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            FrameLayout container = new FrameLayout(ctx);
+            container.setPadding(dp(ctx, 24), dp(ctx, 8), dp(ctx, 24), 0);
+            container.addView(inputLayout, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            MaterialAlertDialogBuilder dlg = createDialog(cordova);
             dlg.setMessage(message);
             dlg.setTitle(title);
             dlg.setCancelable(true);
 
-            dlg.setView(promptInput);
+            dlg.setView(container);
 
             final JSONObject result = new JSONObject();
 
@@ -311,15 +338,15 @@ public class Notification extends CordovaPlugin {
                             (dialog, which) -> {
                                 dialog.dismiss();
                                 try {
-                                    result.put("buttonIndex",1);
-                                    result.put("input1", promptInput.getText().toString().trim().isEmpty() ? defaultText : promptInput.getText());
+                                    result.put("buttonIndex", 1);
+                                    result.put("input1", inputValue(promptInput, defaultText));
                                 } catch (JSONException e) {
-                                    LOG.d(LOG_TAG,"JSONException on first button.", e);
+                                    LOG.d(LOG_TAG, "JSONException on first button.", e);
                                 }
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, result));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on first button.");
+                    LOG.d(LOG_TAG, "JSONException on first button.");
                 }
             }
 
@@ -330,15 +357,15 @@ public class Notification extends CordovaPlugin {
                             (dialog, which) -> {
                                 dialog.dismiss();
                                 try {
-                                    result.put("buttonIndex",2);
-                                    result.put("input1", promptInput.getText().toString().trim().isEmpty() ? defaultText : promptInput.getText());
+                                    result.put("buttonIndex", 2);
+                                    result.put("input1", inputValue(promptInput, defaultText));
                                 } catch (JSONException e) {
-                                    LOG.d(LOG_TAG,"JSONException on second button.", e);
+                                    LOG.d(LOG_TAG, "JSONException on second button.", e);
                                 }
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, result));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on second button.");
+                    LOG.d(LOG_TAG, "JSONException on second button.");
                 }
             }
 
@@ -349,27 +376,28 @@ public class Notification extends CordovaPlugin {
                             (dialog, which) -> {
                                 dialog.dismiss();
                                 try {
-                                    result.put("buttonIndex",3);
-                                    result.put("input1", promptInput.getText().toString().trim().isEmpty() ? defaultText : promptInput.getText());
+                                    result.put("buttonIndex", 3);
+                                    result.put("input1", inputValue(promptInput, defaultText));
                                 } catch (JSONException e) {
-                                    LOG.d(LOG_TAG,"JSONException on third button.", e);
+                                    LOG.d(LOG_TAG, "JSONException on third button.", e);
                                 }
                                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, result));
                             });
                 } catch (JSONException e) {
-                    LOG.d(LOG_TAG,"JSONException on third button.");
+                    LOG.d(LOG_TAG, "JSONException on third button.");
                 }
             }
             dlg.setOnCancelListener(dialog -> {
                 dialog.dismiss();
                 try {
-                    result.put("buttonIndex",0);
-                    result.put("input1", promptInput.getText().toString().trim().isEmpty() ? defaultText : promptInput.getText());
+                    result.put("buttonIndex", 0);
+                    result.put("input1", inputValue(promptInput, defaultText));
                 } catch (JSONException e) { e.printStackTrace(); }
                 callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, result));
             });
 
             changeTextDirection(dlg);
+            promptInput.requestFocus();
         };
         this.cordova.getActivity().runOnUiThread(runnable);
     }
@@ -377,11 +405,11 @@ public class Notification extends CordovaPlugin {
     /**
      * Close previously opened dialog
      */
-    public synchronized void dismissPrevious(final CallbackContext callbackContext){
-        if(!dialogs.isEmpty()){
-            dialogs.remove(dialogs.size()-1).dismiss();
+    public synchronized void dismissPrevious(final CallbackContext callbackContext) {
+        if (!dialogs.isEmpty()) {
+            dialogs.remove(dialogs.size() - 1).dismiss();
             callbackContext.success();
-        }else{
+        } else {
             callbackContext.error("No previously opened dialog to dismiss");
         }
     }
@@ -389,14 +417,14 @@ public class Notification extends CordovaPlugin {
     /**
      * Close any open dialog.
      */
-    public synchronized void dismissAll(final CallbackContext callbackContext){
-        if(!dialogs.isEmpty()){
-            for(AlertDialog dialog: dialogs){
+    public synchronized void dismissAll(final CallbackContext callbackContext) {
+        if (!dialogs.isEmpty()) {
+            for (AlertDialog dialog : dialogs) {
                 dialog.dismiss();
             }
             dialogs = new ArrayList<>();
             callbackContext.success();
-        }else{
+        } else {
             callbackContext.error("No previously opened dialogs to dismiss");
         }
     }
@@ -415,14 +443,37 @@ public class Notification extends CordovaPlugin {
         final Notification notification = this;
         final CordovaInterface cordova = this.cordova;
         Runnable runnable = () -> {
-            notification.spinnerDialog = createProgressDialog(cordova); // new ProgressDialog(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
-            notification.spinnerDialog.setTitle(title);
-            notification.spinnerDialog.setMessage(message);
-            notification.spinnerDialog.setCancelable(true);
-            notification.spinnerDialog.setIndeterminate(true);
-            notification.spinnerDialog.setOnCancelListener(
-                    dialog -> notification.spinnerDialog = null);
-            notification.spinnerDialog.show();
+            Context ctx = cordova.getActivity();
+
+            LinearLayout row = new LinearLayout(ctx);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(ctx, 24), dp(ctx, 20), dp(ctx, 24), dp(ctx, 20));
+
+            CircularProgressIndicator indicator = new CircularProgressIndicator(ctx);
+            indicator.setIndeterminate(true);
+            row.addView(indicator, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            if (message != null && !message.isEmpty()) {
+                TextView text = new TextView(ctx);
+                TextViewCompat.setTextAppearance(text,
+                        com.google.android.material.R.style.TextAppearance_Material3_BodyMedium);
+                text.setTextColor(MaterialColors.getColor(text,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant));
+                text.setText(message);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                lp.setMarginStart(dp(ctx, 16));
+                row.addView(text, lp);
+            }
+
+            MaterialAlertDialogBuilder dlg = createDialog(cordova);
+            if (title != null && !title.isEmpty()) dlg.setTitle(title);
+            dlg.setView(row);
+            dlg.setCancelable(true);
+            dlg.setOnCancelListener(dialog -> notification.spinnerDialog = null);
+            notification.spinnerDialog = dlg.show();
         };
         this.cordova.getActivity().runOnUiThread(runnable);
     }
@@ -447,20 +498,33 @@ public class Notification extends CordovaPlugin {
         if (this.progressDialog != null) {
             this.progressDialog.dismiss();
             this.progressDialog = null;
+            this.progressIndicator = null;
         }
         final Notification notification = this;
         final CordovaInterface cordova = this.cordova;
         Runnable runnable = () -> {
-            notification.progressDialog = createProgressDialog(cordova); // new ProgressDialog(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
-            notification.progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-            notification.progressDialog.setTitle(title);
-            notification.progressDialog.setMessage(message);
-            notification.progressDialog.setCancelable(true);
-            notification.progressDialog.setMax(100);
-            notification.progressDialog.setProgress(0);
-            notification.progressDialog.setOnCancelListener(
-                    dialog -> notification.progressDialog = null);
-            notification.progressDialog.show();
+            Context ctx = cordova.getActivity();
+
+            LinearProgressIndicator indicator = new LinearProgressIndicator(ctx);
+            indicator.setMax(100);
+            indicator.setProgress(0);
+
+            FrameLayout container = new FrameLayout(ctx);
+            container.setPadding(dp(ctx, 24), dp(ctx, 16), dp(ctx, 24), dp(ctx, 16));
+            container.addView(indicator, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            MaterialAlertDialogBuilder dlg = createDialog(cordova);
+            if (title != null && !title.isEmpty()) dlg.setTitle(title);
+            if (message != null && !message.isEmpty()) dlg.setMessage(message);
+            dlg.setView(container);
+            dlg.setCancelable(true);
+            dlg.setOnCancelListener(dialog -> {
+                notification.progressDialog = null;
+                notification.progressIndicator = null;
+            });
+            notification.progressIndicator = indicator;
+            notification.progressDialog = dlg.show();
         };
         this.cordova.getActivity().runOnUiThread(runnable);
     }
@@ -470,10 +534,13 @@ public class Notification extends CordovaPlugin {
      *
      * @param value     0-100
      */
-    public synchronized void progressValue(int value) {
-        if (this.progressDialog != null) {
-            this.progressDialog.setProgress(value);
-        }
+    public synchronized void progressValue(final int value) {
+        final Notification notification = this;
+        this.cordova.getActivity().runOnUiThread(() -> {
+            if (notification.progressIndicator != null) {
+                notification.progressIndicator.setProgressCompat(value, true);
+            }
+        });
     }
 
     /**
@@ -483,38 +550,34 @@ public class Notification extends CordovaPlugin {
         if (this.progressDialog != null) {
             this.progressDialog.dismiss();
             this.progressDialog = null;
+            this.progressIndicator = null;
         }
     }
 
-    @SuppressLint("NewApi")
-    private Builder createDialog(CordovaInterface cordova) {
-        int currentapiVersion = android.os.Build.VERSION.SDK_INT;
-        if (currentapiVersion >= android.os.Build.VERSION_CODES.HONEYCOMB) {
-            return new Builder(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
-        } else {
-            return new Builder(cordova.getActivity());
-        }
+    /**
+     * Material 3 dialog builder. It inherits the activity theme
+     * (Theme.Material3.DayNight...), so it follows dark mode and app colors.
+     */
+    private MaterialAlertDialogBuilder createDialog(CordovaInterface cordova) {
+        return new MaterialAlertDialogBuilder(cordova.getActivity());
     }
 
-    @SuppressLint("InlinedApi")
-    private ProgressDialog createProgressDialog(CordovaInterface cordova) {
-        int currentapiVersion = android.os.Build.VERSION.SDK_INT;
-        if (currentapiVersion >= android.os.Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
-            return new ProgressDialog(cordova.getActivity(), AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
-        } else {
-            return new ProgressDialog(cordova.getActivity());
-        }
-    }
-
-    @SuppressLint("NewApi")
-    private void changeTextDirection(Builder dlg){
-        int currentapiVersion = android.os.Build.VERSION.SDK_INT;
-        dlg.create();
+    private void changeTextDirection(MaterialAlertDialogBuilder dlg) {
         AlertDialog dialog = dlg.show();
         dialogs.add(dialog);
-        if (currentapiVersion >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            TextView messageview = dialog.findViewById(android.R.id.message);
-            messageview.setTextDirection(android.view.View.TEXT_DIRECTION_LOCALE);
+        TextView messageview = dialog.findViewById(android.R.id.message);
+        if (messageview != null) {
+            messageview.setTextDirection(View.TEXT_DIRECTION_LOCALE);
         }
+    }
+
+    private static String inputValue(TextInputEditText input, String defaultText) {
+        String text = input.getText() != null ? input.getText().toString() : "";
+        return text.trim().isEmpty() ? defaultText : text;
+    }
+
+    private static int dp(Context ctx, int value) {
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                ctx.getResources().getDisplayMetrics());
     }
 }
